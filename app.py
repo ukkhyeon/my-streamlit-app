@@ -22,7 +22,7 @@ korean_text = st.text_area(
 if st.button("번역하기"):
 
     if not korean_text.strip():
-        st.warning("한국어가 아닙니다.")
+        st.warning("번역할 문장이 입력되지 않았습니다.")
     else:
         with st.spinner("번역 중입니다..."):
 
