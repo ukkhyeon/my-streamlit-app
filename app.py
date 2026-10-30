@@ -24,7 +24,7 @@ if st.button('변환하기'):
     else:
         # TTS 생성
         speech = client.audio.speech.create(
-            model= "gpt-4o-mini",
+            model= "gpt-4o-mini-tts",
             voice= "nova",
             input= text
         )
