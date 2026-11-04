@@ -1,10 +1,51 @@
 
 import streamlit as st
 from openai import OpenAI
-from task_service import extract_tasks
 
 # OpenAI 클라이언트
 client = OpenAI()
+
+
+def extract_tasks(meeting_text):
+    sys_role = """
+    당신은 김 대리의 AI 개인비서 에이블입니다.
+
+    회의록에서 김 대리에게 배정된 업무만 추출합니다.
+    다른 직원의 업무는 제외합니다.
+    명확한 마감일이 없으면 null로 표시합니다.
+    빠른 처리 요청과 같은 긴급성 표현은 보존합니다.
+    확정된 업무와 제안된 업무를 구분합니다.
+    회의록에 없는 정보는 만들어내지 않습니다.
+    """
+
+    prompt = f"""
+    다음 회의록에서 김 대리의 업무를 추출해주세요.
+
+    각 업무에 다음 정보를 포함해주세요.
+    - task_name: 업무명
+    - deadline: 마감일
+    - urgency: 긴급성
+    - assignment_status: 확정 / 제안 / 확인 필요
+    - source: 회의록 원문 근거
+
+    결과는 반드시 다음 형태의 JSON 객체로 반환하세요.
+    {{"tasks": []}}
+
+    [회의록]
+    {meeting_text}
+    """
+
+    response = client.responses.create(
+        model="gpt-4o-mini",
+        instructions=sys_role,
+        input=prompt,
+        text={"format": {"type": "json_object"}}
+    )
+
+    return json.loads(response.output_text)
+
+
+
 
 # 페이지 설정
 st.set_page_config(
@@ -127,3 +168,5 @@ if st.button("음성 질문 실행"):
 if st.session_state.answer:
     st.subheader("🤖 에이블의 답변")
     st.write(st.session_state.answer)
+
+
