@@ -1,67 +1,129 @@
 
-import os, base64, json, requests
 import streamlit as st
 from openai import OpenAI
+from task_service import extract_tasks
 
-# OpenAI 클라이언트 생성
+# OpenAI 클라이언트
 client = OpenAI()
 
 # 페이지 설정
-st.set_page_config(page_title="음성 AI 서비스", page_icon="🤖", layout="wide")
-st.title("음성 인식 AI 서비스")
-st.write("음성으로 질문하시면 답변해 드립니다.")
+st.set_page_config(
+    page_title="ABLE | AI 개인비서",
+    page_icon="🤖",
+    layout="wide"
+)
+
+st.title("ABLE | 김 대리의 AI 개인비서")
+st.write("회의록을 분석하고 담당 업무를 정리해드립니다.")
 
 # 역할 지정
 sys_role = """
-당신은 다양한 업무를 처리하는 AI 서비스입니다.
-개인 비서처럼 친절하게 응대합니다.
+당신은 김 대리의 AI 개인비서 '에이블'입니다.
+회의록을 바탕으로 질문에 답변하고,
+김 대리가 업무를 효율적으로 수행하도록 돕습니다.
+회의록에 없는 내용은 임의로 만들어내지 않습니다.
 """
 
 # 상태 초기화
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+if "meeting_text" not in st.session_state:
+    st.session_state.meeting_text = ""
 
-# 지시 영역
-with st.form("task_form"):
-    uploaded_file = st.file_uploader("텍스트 파일 업로드", type=["txt"])
-    audio_value = st.audio_input("무엇을 도와드릴까요?")
-    submit = st.form_submit_button("실행")
+if "tasks" not in st.session_state:
+    st.session_state.tasks = []
 
-# 버튼을 눌렀을 때만 실행
-if submit:
-    # 업로드 된 파일이 있으면 디코딩
-    text = ""
-    if uploaded_file is not None:
-        text = uploaded_file.read().decode("utf-8")
+if "answer" not in st.session_state:
+    st.session_state.answer = ""
 
-    # 녹음이 없으면 녹음 요청
+# 1. 회의록 업로드
+st.subheader("📄 회의록 분석")
+
+uploaded_file = st.file_uploader(
+    "회의록 TXT 파일을 업로드하세요.",
+    type=["txt"]
+)
+
+if uploaded_file is not None:
+    meeting_text = uploaded_file.getvalue().decode("utf-8")
+
+    # 이전 회의록과 다른 경우 분석
+    if meeting_text != st.session_state.meeting_text:
+        st.session_state.meeting_text = meeting_text
+
+        with st.spinner("김 대리의 담당 업무를 분석하고 있습니다..."):
+            result = extract_tasks(meeting_text)
+            st.session_state.tasks = result.get("tasks", [])
+
+# 2. 업무 목록 출력
+if st.session_state.meeting_text:
+    st.subheader("📋 김 대리의 업무 목록")
+
+    tasks = st.session_state.tasks
+
+    if tasks:
+        for i, task in enumerate(tasks):
+            with st.container(border=True):
+                st.markdown(
+                    f"### {i + 1}. {task.get('task_name', '업무명 없음')}"
+                )
+                st.write(
+                    "마감일:",
+                    task.get("deadline") or "미정"
+                )
+                st.write(
+                    "긴급성:",
+                    task.get("urgency") or "언급 없음"
+                )
+                st.write(
+                    "업무 배정 상태:",
+                    task.get("assignment_status") or "확인 필요"
+                )
+                st.caption(
+                    "회의록 근거: " +
+                    str(task.get("source") or "없음")
+                )
+    else:
+        st.info("김 대리에게 배정된 업무가 없습니다.")
+
+# 3. 음성 명령
+st.subheader("🎤 에이블에게 질문하기")
+
+audio_value = st.audio_input("무엇을 도와드릴까요?")
+
+if st.button("음성 질문 실행"):
+
     if audio_value is None:
-        st.warning("음성을 녹음해주세요.")
-        st.stop()
+        st.warning("음성을 먼저 녹음해주세요.")
 
-    # 시스템 메세지
-    system_content = sys_role
-    if text:
-        system_content += f"\n\n다음 내용을 참고하세요:\n{text}"
-    input_messages = [{"role": "system", "content": system_content}]
-
-    # STT: 음성 → 텍스트
-    transcript = client.audio.transcriptions.create(
-        model="whisper-1",
-        file=("audio.wav", audio_value, "audio/wav"))
-
-    # 사용자 메시지
-    input_messages.append({"role": "user", "content": transcript.text})
-
-    # LLM 호출 및 응답 듣기
-    with st.spinner("답변을 준비하고 있습니다..."):
-        # LLM 호출
-        response = client.responses.create(
-            model="gpt-4o-mini",
-            input=input_messages
+    else:
+        # STT
+        transcript = client.audio.transcriptions.create(
+            model="whisper-1",
+            file=(
+                "audio.wav",
+                audio_value.getvalue(),
+                "audio/wav"
+            )
         )
-        answer = response.output_text
 
-        # 응답 출력
-        st.subheader("AI 답변")
-        st.write(answer)
+        st.write("인식된 질문:", transcript.text)
+
+        # LLM 호출
+        with st.spinner("답변을 생성하고 있습니다..."):
+            response = client.responses.create(
+                model="gpt-4o-mini",
+                instructions=sys_role,
+                input=f"""
+                사용자 질문:
+                {transcript.text}
+
+                [회의록]
+                {st.session_state.meeting_text}
+                """
+            )
+
+            st.session_state.answer = response.output_text
+
+# 4. 음성 질문 답변 출력
+if st.session_state.answer:
+    st.subheader("🤖 에이블의 답변")
+    st.write(st.session_state.answer)
