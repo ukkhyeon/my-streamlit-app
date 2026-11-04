@@ -904,7 +904,7 @@ with st.sidebar:
             with title_col:
                 st.markdown(f"{color} **{task['업무']}**")
             with delete_col:
-                if st.button("✕", key=f"delete_{task['_file']}_{task['번호']}", help="이 업무 삭제"):
+                if st.button("", icon=":material/close:", key=f"delete_{task['_file']}_{task['번호']}", help="이 업무 삭제"):
                     removed = st.session_state.deleted_tasks.setdefault(task["_file"], [])
                     removed.append(re.sub(r"\s+", "", task.get("_original_name", task["업무"])))
                     source_tasks = st.session_state.task_lists[task["_file"]]
